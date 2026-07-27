@@ -1,51 +1,57 @@
 <?php
 
-session_start();
 require_once "../config/db.php";
 
 $message = "";
+$messageType = "";
 
-if ($_SERVER["REQUEST_METHOD"] == "POST") {
+if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
+    $fullname = trim($_POST["fullname"]);
     $email = trim($_POST["email"]);
     $password = trim($_POST["password"]);
 
-    $stmt = $conn->prepare("SELECT id, fullname, password FROM users WHERE email = ?");
+    if (strlen($password) < 6) {
 
-    if (!$stmt) {
-        die("Database Error: " . $conn->error);
-    }
-
-    $stmt->bind_param("s", $email);
-    $stmt->execute();
-
-    $result = $stmt->get_result();
-
-    if ($result->num_rows == 1) {
-
-        $user = $result->fetch_assoc();
-
-        if (password_verify($password, $user["password"])) {
-
-            $_SESSION["user_id"] = $user["id"];
-            $_SESSION["fullname"] = $user["fullname"];
-
-            header("Location: ../dashboard/index.php");
-            exit();
-
-        } else {
-
-            $message = "Invalid email or password.";
-
-        }
+        $message = "Password must be at least 6 characters.";
+        $messageType = "danger";
 
     } else {
 
-        $message = "Invalid email or password.";
+        // Check if email already exists
+        $check = $conn->prepare("SELECT id FROM users WHERE email = ?");
+        $check->bind_param("s", $email);
+        $check->execute();
+        $checkResult = $check->get_result();
 
+        if ($checkResult->num_rows > 0) {
+
+            $message = "Email already registered.";
+            $messageType = "warning";
+
+        } else {
+
+            $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
+
+            $stmt = $conn->prepare("INSERT INTO users (fullname, email, password) VALUES (?, ?, ?)");
+            $stmt->bind_param("sss", $fullname, $email, $hashedPassword);
+
+            if ($stmt->execute()) {
+
+                header("Location: login.php?registered=1");
+                exit();
+
+            } else {
+
+                $message = "Registration failed. Please try again.";
+                $messageType = "danger";
+            }
+
+            $stmt->close();
+        }
+
+        $check->close();
     }
-
-    $stmt->close();
 }
 
 $conn->close();
@@ -60,7 +66,7 @@ $conn->close();
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <title>User Login</title>
+    <title>User Registration</title>
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css" rel="stylesheet">
 
@@ -72,23 +78,34 @@ $conn->close();
 
     <div class="row justify-content-center">
 
-        <div class="col-md-5">
+        <div class="col-md-6">
 
             <div class="card shadow">
 
                 <div class="card-header text-center">
-                    <h3>🔐 User Login</h3>
+                    <h3>📝 User Registration</h3>
                 </div>
 
                 <div class="card-body">
 
                     <?php if (!empty($message)) : ?>
-                        <div class="alert alert-danger">
+
+                        <div class="alert alert-<?= $messageType ?>">
                             <?= htmlspecialchars($message) ?>
                         </div>
+
                     <?php endif; ?>
 
                     <form method="POST">
+
+                        <div class="mb-3">
+                            <label class="form-label">Full Name</label>
+                            <input
+                                type="text"
+                                name="fullname"
+                                class="form-control"
+                                required>
+                        </div>
 
                         <div class="mb-3">
                             <label class="form-label">Email</label>
@@ -105,11 +122,12 @@ $conn->close();
                                 type="password"
                                 name="password"
                                 class="form-control"
+                                minlength="6"
                                 required>
                         </div>
 
-                        <button type="submit" class="btn btn-success w-100">
-                            Login
+                        <button type="submit" class="btn btn-primary w-100">
+                            Register
                         </button>
 
                     </form>
@@ -117,8 +135,8 @@ $conn->close();
                     <hr>
 
                     <p class="text-center mb-0">
-                        Don't have an account?
-                        <a href="register.php">Register Here</a>
+                        Already have an account?
+                        <a href="login.php">Login Here</a>
                     </p>
 
                 </div>
@@ -132,4 +150,5 @@ $conn->close();
 </div>
 
 </body>
+
 </html>
